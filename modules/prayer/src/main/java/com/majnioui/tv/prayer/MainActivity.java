@@ -124,7 +124,7 @@ public class MainActivity extends Activity {
         String url = "https://api.aladhan.com/v1/timings/"
                 + new SimpleDateFormat("dd-MM-yyyy", Locale.ROOT).format(new Date())
                 + "?latitude=" + getString(R.string.latitude) + "&longitude=" + getString(R.string.longitude)
-                + "&method=21";   // 21 = Morocco
+                + "&method=20";   // 20 = Kemenag (Indonesia)
         new Thread(() -> {
             JSONObject json = null;
             try {
@@ -223,7 +223,7 @@ public class MainActivity extends Activity {
             lp.setMargins(i == 0 ? 0 : dp(8), 0, i == NAMES.length - 1 ? 0 : dp(8), 0);
             rows.addView(card, lp);
         }
-        status.setText("Aladhan · Morocco method · updated "
+        status.setText("Aladhan · Kemenag method · updated "
                 + new SimpleDateFormat("HH:mm", Locale.ROOT).format(new Date()));
     }
 

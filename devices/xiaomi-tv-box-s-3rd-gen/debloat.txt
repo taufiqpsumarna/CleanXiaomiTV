@@ -1,0 +1,52 @@
+# Xiaomi TV Box S 3rd gen (MiTV-AFMU0, twilight), Google TV 14 (SDK 34), firmware UKG3.250826.001.V816.0.11.0.UZFAABX
+# Based on examples/xiaomi-mitv-afmu0. Kept by owner's choice: YouTube, YouTube Music, Netflix, Xiaomi TV+
+# (com.mitv.tvhome.mitvplus), voice assistant, Chromecast, Miracast/Mi share, firmware updates.
+# Apply:   TV_HOST=<box ip> tools/disable.sh work/debloat.txt
+# Undo:    TV_HOST=<box ip> tools/restore.sh work/debloat.txt com.google.android.apps.tv.launcherx
+
+# Batch 1: telemetry, feedback, ad personalisation
+com.miui.tv.analytics
+com.xiaomi.statistic
+com.xiaomi.tvqs.overseas.y24           # Xiaomi quality-stats uploader
+com.google.android.feedback
+com.android.tv.feedbackconsent
+com.android.adservices.api
+com.android.ondevicepersonalization.services
+com.android.federatedcompute.services
+
+# Batch 2: PatchWall / Mi Home tab, content rows, promos, auto-installs (Xiaomi TV+ kept)
+com.mitv.tvhome.atv
+com.mitv.tvhome.michannel
+com.mitv.tvhome.oemtab
+com.xm.webcontent
+android.autoinstalls.config.soc.amlogic
+
+# Batch 3: preloaded apps the owner does not use
+com.amazon.amazonvideo.livingroom      # Prime Video (unticked)
+com.google.android.play.games
+com.google.android.marvin.talkback
+com.xiaomi.mimusic2
+com.xiaomi.mitv.mediaexplorer
+com.mitv.videoplayer
+com.mitv.gallery
+com.android.printspooler
+
+# Batch 4: extras from majnioui/CleanXiaomiTV that do not clash with the owner's choices
+com.android.dreams.basic               # AOSP colour screensaver (Google ambient stays)
+com.android.dynsystem                  # dynamic system updates (GSI), developer feature
+com.android.hotspot2.osulogin          # Passpoint online sign-up
+com.android.providers.calendar
+com.google.android.syncadapters.calendar
+com.android.settings.intelligence      # settings search suggestions
+com.android.soundpicker
+com.android.wallpaperbackup
+com.google.android.partnersetup
+com.xiaomo.tv.milegal                  # Xiaomi legal / privacy notice screens
+
+# Batch 5: setup wizard, takes Home after the stock launcher is disabled. Disabled first, after Wi-Fi was
+# forgotten and re-joined (the network had belonged to it). Re-enable it to re-pair the remote.
+com.google.android.tungsten.setupwraith
+# Stock launcher: launcher/build-and-install.sh disables com.google.android.apps.tv.launcherx after Home moves.
+
+# Batch 6: CleanYourTV launcher, replaced as Home by majnioui/CleanXiaomiTV (com.majnioui.cleanxiaomitv)
+com.gathin.tvhome

@@ -13,9 +13,10 @@
     <!-- Apps pinned to the dock row at the bottom, in this order. Missing apps are skipped. -->
     <string-array name="dock_apps">
         <item>com.google.android.youtube.tv</item>
-        <item>net.mbc.shahidTV</item>
-        <item>com.nuvio.tv</item>
-        <item>com.sportzx.live</item>
+        <item>com.netflix.ninja</item>
+        <item>com.mitv.tvhome.mitvplus</item>
+        <item>com.vidio.android.tv</item>
+        <item>com.google.android.youtube.tvmusic</item>
     </string-array>
 
     <!-- Apps never shown as tiles (e.g. the Live TV app, which the Inputs menu already covers). -->
@@ -24,7 +25,7 @@
     </string-array>
 
     <!-- The TV's Live TV / tuner app, offered at the end of the Inputs menu. Leave empty to omit. -->
-    <string name="live_tv_package" translatable="false">com.mitv.livetv</string>
+    <string name="live_tv_package" translatable="false"></string>
 
     <!-- Some TVs give their Live TV app no leanback entry point at all, so `live_tv_package` above
          resolves to nothing (TCL Android TV 9 on China-market sets is one). This action is then sent
@@ -57,7 +58,7 @@
     <bool name="dream_analog">true</bool>
     <!-- Aladhan calculation method: 21 Morocco, 3 Muslim World League, 2 ISNA (North America), 4 Umm al-Qura,
          5 Egypt, 12 France, 13 Turkey; the full list is on aladhan.com/calculation-methods. -->
-    <integer name="prayer_method">21</integer>
+    <integer name="prayer_method">20</integer>
     <!-- Photos of the day from Bing behind the Clock screensaver, a new one every 3 minutes, kept on the TV
          for offline use. false: the dark glow only, and the screensaver makes no network requests besides
          the weather. -->
@@ -75,15 +76,15 @@
     <string name="vpn_app" translatable="false"></string>
     <!-- Weather above the date, from Open-Meteo (free, no account or key; only these coordinates are
          sent). Leave the latitude empty to hide it. -->
-    <string name="weather_latitude" translatable="false">33.5731</string>
-    <string name="weather_longitude" translatable="false">-7.5898</string>
-    <string name="weather_place" translatable="false">Casablanca</string>
+    <string name="weather_latitude" translatable="false">-6.9175</string>
+    <string name="weather_longitude" translatable="false">107.6191</string>
+    <string name="weather_place" translatable="false">Bandung</string>
     <!-- Grid rows left visible under the dock on the home screen. 0 = dock sits at the very bottom. -->
     <integer name="rows_below_dock">0</integer>
 
     <!-- Dock slots. Tiles are 180dp wide at 4 and shrink to fit from 5 up (about 144dp at 5, 117dp at 6 on a
          1080p TV). -->
-    <integer name="columns">4</integer>
+    <integer name="columns">5</integer>
     <!-- Tiles per row in the grid below the dock. More than columns gives smaller grid tiles. -->
     <integer name="grid_columns">5</integer>
 
