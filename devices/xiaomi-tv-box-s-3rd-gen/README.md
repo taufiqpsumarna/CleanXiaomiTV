@@ -20,7 +20,8 @@ record `tools/restore.sh` uses is in `~/.cleanyourtv/recovery-<box ip>-*.json`: 
 - **Home screen:** the CleanXiaomiTV launcher (`com.majnioui.cleanxiaomitv`). Photo of the day behind it
   (changes daily), Bandung weather by the clock, next prayer with a countdown (Kemenag method), dock:
   YouTube, Netflix, Xiaomi TV+, Vidio, YouTube Music; press Down for all apps.
-- **Cards:** Capacity Stats, Channels, Prayer Times, and two Weather apps (CleanYourTV's and CleanXiaomiTV's).
+- **Cards:** Channels (17 Indonesian channels, since 2026-11-19), Prayer Times, and two Weather apps
+  (CleanYourTV's and CleanXiaomiTV's). Capacity Stats was uninstalled on 2026-11-19.
 - **Screensaver:** Google Ambient (Google's rotating art and photos).
 - **DNS:** AdGuard Private DNS (`dns.adguard-dns.com`), blocks ads and trackers in most apps, not YouTube ads.
 - **Kept on purpose:** YouTube, YouTube Music, Netflix, Xiaomi TV+, voice assistant, Chromecast, Miracast/Mi
@@ -51,10 +52,40 @@ TV_HOST=<box ip> tools/venv/bin/python tools/tv.py 'pm enable com.amazon.amazonv
 ```
 
 Notes:
-- **Setup wizard** (`com.google.android.tungsten.setupwraith`): only needed to re-pair the remote. Enable it,
-  pair, then disable it again, or it can take over Home.
+- **Setup wizard** (`com.google.android.tungsten.setupwraith`): only needed to re-pair the remote. Order
+  matters, one package per command:
+  1. `pm enable com.google.android.apps.tv.launcherx` (stock launcher first)
+  2. `pm enable com.google.android.tungsten.setupwraith`, then pair the remote
+  3. `pm disable-user --user 0 com.google.android.tungsten.setupwraith` (setup wizard first)
+  4. `pm disable-user --user 0 com.google.android.apps.tv.launcherx`, then set Home to the launcher again
+
+  Never reboot with launcherx off and setupwraith on: its RecoveryActivity becomes Home, and on a MiTV-MOEU0
+  that state ended in a factory reset (upstream #3578).
 - **Stock launcher** (`com.google.android.apps.tv.launcherx`): enabling it makes it Home again (it outranks
   sideloaded launchers on Google TV).
+
+## Notes from this box
+
+From CleanYourTV's `examples/xiaomi-mitv-afmu0` (two units on this firmware) and this box:
+
+- **Why the setup wizard is disabled.** With launcherx off, setupwraith's RecoveryActivity (HOME priority 1)
+  beats a sideloaded launcher (priority 0) and takes Home. It has to be disabled *before* launcherx.
+- **Wi-Fi can drop when setupwraith is disabled.** A network saved during first setup belongs to setupwraith,
+  and Android deletes it with the app (logged as `WifiConfigManager: Remove all networks for app ...
+  setupwraith`), which also cuts ADB. Check first: `tools/tv.py "dumpsys wifi" | grep -o 'cname=[^ ]*'`. Every
+  entry should be `android.uid.system`; if one is setupwraith, forget and re-join that network in Settings first.
+  On 2026-11-19 all four saved networks here were `android.uid.system`.
+- **Leave alone:** `com.xiaomi.android.tvsetup.partnercustomizer`, `mitv.service`, `com.droidlogic*`.
+- **Play Store updates re-enable disabled apps.** PatchWall (`com.mitv.tvhome.atv`) was found enabled on
+  2026-11-19 after Play Store updated it (4.3.7.1 in `/system` to 4.21.148.1 in `/data/app`). It is kept on
+  purpose now and commented out in `debloat.txt`; other updated packages can come back the same way.
+- **Remote buttons.** With launcherx off, Netflix (BUTTON_6) still works, but YouTube (BUTTON_3), Prime Video
+  (BUTTON_7), Xiaomi TV+ (BUTTON_5) and Apps (ALL_APPS) do nothing until the launcher maps them back.
+- **Volume buttons send IR to the TV**, not to the box: `getevent -lt` shows nothing while they are held, so a
+  held button not repeating is the TV's doing.
+- **Wireless debugging keeps port 5555 open across reboots**, unencrypted. Switch USB and Wireless debugging
+  off when done.
+- **Disabled packages survive a reboot.** The firmware re-enabled nothing after a restart on either unit.
 
 ## Change the dock order or the apps in it
 

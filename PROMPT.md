@@ -47,6 +47,10 @@ Debloat
   (`com.duokan.factorytest`) as part of the debloat, even though they answer HOME: with the stock launcher
   off they are the TV's fallback Home. Only if the new launcher can't take Home because of the setup
   wizard, explain that to me and ask first, and make sure the restore script re-enables it.
+  Known case: on Google TV boxes such as the Xiaomi TV Box S 3rd gen (MiTV-AFMU0) the setup wizard's
+  RecoveryActivity outranks a sideloaded launcher once the stock one is off, so it has to be disabled first.
+  Before that, check `dumpsys wifi | grep -o 'cname=[^ ]*'`: a Wi-Fi network owned by the setup wizard is
+  deleted with it, which drops ADB too. See `devices/xiaomi-tv-box-s-3rd-gen/README.md`.
 - Run `pm` commands one per shell call, chained commands may silently stop after the first.
 
 Launcher
