@@ -53,6 +53,9 @@
          countdown in a glass pill under the clock. dream_prayer: the day's five times on the Clock screensaver.
          These two and dream_athkar can also be switched on the TV: Settings pill, then the rows at the bottom. -->
     <bool name="home_prayer">true</bool>
+    <!-- Quick stats in a glass pill beside the prayer pill: CPU load, memory in use and free storage, read
+         every 10 seconds while Home is on screen. Also a switch in the Settings menu. -->
+    <bool name="home_stats">true</bool>
     <bool name="dream_prayer">true</bool>
     <!-- An analog clock on the Clock screensaver instead of the digital one. Also a switch in the Settings menu. -->
     <bool name="dream_analog">true</bool>

@@ -48,6 +48,8 @@ final class Config {
     final boolean dreamAthkar;
     /** Today's prayer times under the clock on Home, and on the screensaver; at the weather coordinates. */
     final boolean homePrayer;
+    /** CPU, memory and storage in a pill beside the prayer pill. */
+    final boolean homeStats;
     final boolean dreamPrayer;
     /** An analog clock on the screensaver instead of the digital one. */
     final boolean dreamAnalog;
@@ -73,7 +75,7 @@ final class Config {
     private Config(List<String> dockApps, List<String> hiddenApps, String liveTvPackage, String liveTvAction,
                    String sourcePanelService, String sourcePanelAction, String inputAction,
                    int columns, int gridColumns, int rowsBelowDock,
-                   boolean shamsiDate, boolean dreamAthkar, boolean homePrayer, boolean dreamPrayer, boolean dreamAnalog, int prayerMethod, boolean dreamPhotos, boolean nowPlaying, boolean homePhoto, boolean moduleCards, String vpnApp,
+                   boolean shamsiDate, boolean dreamAthkar, boolean homePrayer, boolean homeStats, boolean dreamPrayer, boolean dreamAnalog, int prayerMethod, boolean dreamPhotos, boolean nowPlaying, boolean homePhoto, boolean moduleCards, String vpnApp,
                    String weatherLatitude, String weatherLongitude, String weatherPlace, boolean showHomeSettingsShortcut, int backgroundColor,
                    File wallpaper, boolean overlayApplied) {
         this.dockApps = Collections.unmodifiableList(dockApps);
@@ -89,6 +91,7 @@ final class Config {
         this.shamsiDate = shamsiDate;
         this.dreamAthkar = dreamAthkar;
         this.homePrayer = homePrayer;
+        this.homeStats = homeStats;
         this.dreamPrayer = dreamPrayer;
         this.dreamAnalog = dreamAnalog;
         this.prayerMethod = prayerMethod;
@@ -126,6 +129,7 @@ final class Config {
         boolean shamsi = res.getBoolean(R.bool.shamsi_date);
         boolean athkar = res.getBoolean(R.bool.dream_athkar);
         boolean homePrayer = res.getBoolean(R.bool.home_prayer);
+        boolean homeStats = res.getBoolean(R.bool.home_stats);
         boolean dreamPrayer = res.getBoolean(R.bool.dream_prayer);
         boolean dreamAnalog = res.getBoolean(R.bool.dream_analog);
         int prayerMethod = res.getInteger(R.integer.prayer_method);
@@ -160,6 +164,8 @@ final class Config {
             shamsi = bool(json, "shamsi_date", shamsi);
             athkar = bool(json, "dream_athkar", athkar);
             homePrayer = bool(json, "home_prayer", homePrayer);
+            // show_stats is CleanYourTV's name for the same switch
+            homeStats = bool(json, "home_stats", bool(json, "show_stats", homeStats));
             dreamPrayer = bool(json, "dream_prayer", dreamPrayer);
             dreamAnalog = bool(json, "dream_analog", dreamAnalog);
             prayerMethod = integer(json, "prayer_method", prayerMethod, 0, 99);
@@ -178,6 +184,7 @@ final class Config {
         SharedPreferences toggles = toggles(ctx);
         athkar = toggles.getBoolean(DREAM_ATHKAR, athkar);
         homePrayer = toggles.getBoolean(HOME_PRAYER, homePrayer);
+        homeStats = toggles.getBoolean(HOME_STATS, homeStats);
         dreamPrayer = toggles.getBoolean(DREAM_PRAYER, dreamPrayer);
         dreamAnalog = toggles.getBoolean(DREAM_ANALOG, dreamAnalog);
 
@@ -187,13 +194,14 @@ final class Config {
         if (json != null && json.has("wallpaper") && !bool(json, "wallpaper", true)) wallpaper = null;
 
         return new Config(dock, hidden, liveTv, liveTvAction, panelService, panelAction, inputAction,
-                Math.max(1, columns), Math.max(1, gridColumns), Math.max(0, rowsBelow), shamsi, athkar, homePrayer, dreamPrayer, dreamAnalog, prayerMethod, photos, playing, homePhoto, moduleCards, vpn,
+                Math.max(1, columns), Math.max(1, gridColumns), Math.max(0, rowsBelow), shamsi, athkar, homePrayer, homeStats, dreamPrayer, dreamAnalog, prayerMethod, photos, playing, homePhoto, moduleCards, vpn,
                 weatherLat, weatherLon, weatherPlace, homeSettings, background,
                 wallpaper, applied);
     }
 
     /** Keys of the switches in the Settings menu; the same names as in config.xml and config.json. */
-    static final String DREAM_ATHKAR = "dream_athkar", HOME_PRAYER = "home_prayer", DREAM_PRAYER = "dream_prayer",
+    static final String DREAM_ATHKAR = "dream_athkar", HOME_PRAYER = "home_prayer", HOME_STATS = "home_stats",
+            DREAM_PRAYER = "dream_prayer",
             DREAM_ANALOG = "dream_analog";
 
     private static SharedPreferences toggles(Context ctx) {

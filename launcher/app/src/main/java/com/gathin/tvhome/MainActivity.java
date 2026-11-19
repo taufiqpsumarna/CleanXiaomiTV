@@ -131,6 +131,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private View prayerPill;
     private TextView prayerName, prayerTime, prayerLeft;
     private ImageView prayerIcon;
+    /** Quick stats pill beside the prayer pill (home_stats); switched from the Settings menu. */
+    private boolean homeStats;
+    private View statsPill, statsCpuSep;
+    private TextView statsCpu, statsMem, statsDisk;
+    private final QuickStats quickStats = new QuickStats();
+    private android.os.HandlerThread statsThread;
+    /** The running reader's handler; a reader whose handler is no longer this one stops. */
+    private volatile Handler statsBg;
+    private static final long STATS_MS = 10_000L;
     /** The last times loaded; kept past midnight until the new day's arrive, a minute out at most. */
     private Prayer.Day prayerDay;
     /** When the times were last requested (elapsedRealtime). */
@@ -284,6 +293,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         prayerMethod = cfg.prayerMethod;
         homePrayer = cfg.homePrayer && prayerLat != null;
+        statsPill = findViewById(R.id.statsPill);
+        statsCpu = findViewById(R.id.statsCpu);
+        statsCpuSep = findViewById(R.id.statsCpuSep);
+        statsMem = findViewById(R.id.statsMem);
+        statsDisk = findViewById(R.id.statsDisk);
+        statsPill.setBackground(new GlassDrawable(statsPill, backdrop, 19 * density, density));
+        homeStats = cfg.homeStats;
         dockApps = DockEditor.loadDock(this, cfg.dockApps, COLUMNS);
         appOrder = DockEditor.loadAppOrder(this, dockApps);
 
@@ -518,6 +534,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         updateWifiLabel();
         updateWeather();
         updatePrayer();
+        startStats();
         updateInputsButton();
         handler.postDelayed(minuteTick, MINUTE_MS);
         if (nowPlaying != null) nowPlaying.start();
@@ -591,6 +608,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         super.onPause();
         unregisterReceiver(packageReceiver);
         handler.removeCallbacks(minuteTick);
+        stopStats();
         if (nowPlaying != null) nowPlaying.stop();
         if (nowCard != null) nowCard.stop();
         // Nothing of ours stays on screen over another app; an undecided prompt simply returns next time.
@@ -922,6 +940,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             });
             addToggleRow(rows, R.drawable.ic_prayer, R.string.toggle_dream_prayer, Config.DREAM_PRAYER, cfg.dreamPrayer, null);
         }
+        addToggleRow(rows, R.drawable.ic_stats, R.string.toggle_home_stats, Config.HOME_STATS, homeStats, on -> {
+            homeStats = on;
+            if (on) startStats();
+            else stopStats();
+        });
         addToggleRow(rows, R.drawable.ic_athkar, R.string.toggle_dream_athkar, Config.DREAM_ATHKAR, cfg.dreamAthkar, null);
         addToggleRow(rows, R.drawable.ic_clock, R.string.toggle_dream_analog, Config.DREAM_ANALOG, cfg.dreamAnalog, null);
 
@@ -1136,6 +1159,59 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             prayerPill.setAlpha(0f);
             prayerPill.setVisibility(View.VISIBLE);
             prayerPill.animate().alpha(1f).setDuration(400).start();
+        }
+    }
+
+    // ---- quick stats ----------------------------------------------------------------------------
+
+    /** Reads the stats every STATS_MS on its own thread while Home is resumed and home_stats is on. */
+    private void startStats() {
+        if (!homeStats) {
+            statsPill.setVisibility(View.GONE);
+            return;
+        }
+        if (statsThread != null) return;
+        quickStats.reset();
+        statsThread = new android.os.HandlerThread("stats");
+        statsThread.start();
+        final Handler bg = new Handler(statsThread.getLooper());
+        statsBg = bg;
+        bg.post(new Runnable() {
+            @Override
+            public void run() {
+                if (statsBg != bg) return;
+                QuickStats.Sample s = quickStats.sample();
+                handler.post(() -> {
+                    if (statsBg == bg) showStats(s);
+                });
+                if (statsBg == bg) bg.postDelayed(this, STATS_MS);
+            }
+        });
+    }
+
+    private void stopStats() {
+        if (statsThread != null) {
+            statsBg.removeCallbacksAndMessages(null);
+            statsBg = null;
+            statsThread.quit();
+            statsThread = null;
+        }
+        // Paused with the pill on: keep the last figures so nothing shifts while another app is on top.
+        if (!homeStats) statsPill.setVisibility(View.GONE);
+    }
+
+    private void showStats(QuickStats.Sample s) {
+        boolean cpu = s.cpu >= 0;
+        statsCpu.setVisibility(cpu ? View.VISIBLE : View.GONE);
+        statsCpuSep.setVisibility(cpu ? View.VISIBLE : View.GONE);
+        if (cpu) statsCpu.setText(getString(R.string.stats_cpu, s.cpu));
+        statsMem.setText(s.memTotal > 0
+                ? getString(R.string.stats_memory, QuickStats.size(s.memUsed), QuickStats.size(s.memTotal)) : "");
+        statsDisk.setText(s.storageFree >= 0 ? getString(R.string.stats_storage, QuickStats.size(s.storageFree)) : "");
+        if (statsPill.getVisibility() != View.VISIBLE) {
+            statsPill.setAlpha(0f);
+            statsPill.setVisibility(View.VISIBLE);
+            statsPill.animate().alpha(1f).setDuration(400).start();
         }
     }
 

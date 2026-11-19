@@ -34,6 +34,7 @@ is ignored, and a file that doesn't parse is ignored as a whole, so a theme can 
 | `shamsi_date` | bool | Show the Solar Hijri date above the Gregorian one |
 | `dream_athkar` | bool | Adhkar at the bottom of the Clock screensaver, a new one every minute |
 | `home_prayer` | bool | Next prayer and a countdown in a glass pill under the clock, at the weather coordinates (Aladhan) |
+| `home_stats` | bool | Quick stats beside the prayer pill: CPU load, memory in use, free storage, read every 10 s while Home is on screen (`show_stats` also works) |
 | `dream_analog` | bool | An analog clock on the Clock screensaver instead of the digital one |
 | `dream_prayer` | bool | Today's prayer times on the Clock screensaver, the next one lit |
 | `prayer_method` | number | Aladhan calculation method, e.g. 21 Morocco, 3 Muslim World League, 2 ISNA |

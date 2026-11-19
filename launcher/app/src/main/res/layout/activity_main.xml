@@ -280,6 +280,77 @@
 
             </LinearLayout>
 
+
+            <!-- Quick stats beside the prayer pill (home_stats): CPU, memory in use, free storage. Read every
+                 10 s while Home is on screen, nothing in the background. Glass, not focusable. -->
+            <LinearLayout
+                android:id="@+id/statsPill"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:layout_below="@id/leftBlock"
+                android:layout_toEndOf="@id/prayerPill"
+                android:layout_marginStart="10dp"
+                android:layout_marginTop="12dp"
+                android:paddingStart="14dp"
+                android:paddingEnd="18dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <ImageView
+                    android:layout_width="17dp"
+                    android:layout_height="17dp"
+                    android:layout_marginEnd="10dp"
+                    android:src="@drawable/ic_stats"
+                    android:contentDescription="@null" />
+
+                <TextView
+                    android:id="@+id/statsCpu"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:singleLine="true"
+                    android:textColor="#E6FFFFFF"
+                    android:textSize="14sp"
+                    android:fontFamily="@font/outfit"
+                    android:fontVariationSettings="'wght' 400"
+                    android:includeFontPadding="false" />
+                <View
+                    android:id="@+id/statsCpuSep"
+                    android:layout_width="1dp"
+                    android:layout_height="14dp"
+                    android:layout_marginStart="12dp"
+                    android:layout_marginEnd="12dp"
+                    android:background="#40FFFFFF" />
+                <TextView
+                    android:id="@+id/statsMem"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:singleLine="true"
+                    android:textColor="#E6FFFFFF"
+                    android:textSize="14sp"
+                    android:fontFamily="@font/outfit"
+                    android:fontVariationSettings="'wght' 400"
+                    android:includeFontPadding="false" />
+                <View
+                    android:id="@+id/statsMemSep"
+                    android:layout_width="1dp"
+                    android:layout_height="14dp"
+                    android:layout_marginStart="12dp"
+                    android:layout_marginEnd="12dp"
+                    android:background="#40FFFFFF" />
+                <TextView
+                    android:id="@+id/statsDisk"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:singleLine="true"
+                    android:textColor="#E6FFFFFF"
+                    android:textSize="14sp"
+                    android:fontFamily="@font/outfit"
+                    android:fontVariationSettings="'wght' 400"
+                    android:includeFontPadding="false" />
+
+            </LinearLayout>
+
             <!-- The now playing pill (NowPlayingCard, now_playing), right under the buttons while music plays.
                  Empty and zero high otherwise. -->
             <FrameLayout
