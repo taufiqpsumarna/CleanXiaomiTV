@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="accent">#E5484D</color>
+    <color name="accent">#ED1C24</color>
     <!-- Public lists the channel links are refreshed from, once a day (iptv-org: free streams that the
          broadcasters publish themselves). Channels are matched by tvg-id with res/raw/channels.m3u. -->
     <string-array name="sources" translatable="false">

@@ -49,10 +49,14 @@ final class ChannelList {
     private ChannelList() {
     }
 
-    /** The saved list if there is one, else the bundled one. Fast; safe on the main thread. */
+    /**
+     * The saved list if there is one, else the bundled one. Fast; safe on the main thread. A list saved
+     * before the app was last updated is dropped, so a new bundled list shows up right after an install.
+     */
     static List<Channel> load(Context ctx) {
         File saved = new File(ctx.getFilesDir(), SAVED);
         try {
+            if (saved.isFile() && saved.lastModified() < installedAt(ctx)) saved.delete();
             if (saved.isFile()) {
                 List<Channel> list = parse(new String(readAll(new FileInputStream(saved)), StandardCharsets.UTF_8));
                 if (!list.isEmpty()) return list;
@@ -61,6 +65,14 @@ final class ChannelList {
             Log.w(TAG, "saved list: " + e);
         }
         return bundled(ctx);
+    }
+
+    private static long installedAt(Context ctx) {
+        try {
+            return ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0).lastUpdateTime;
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     static List<Channel> bundled(Context ctx) {

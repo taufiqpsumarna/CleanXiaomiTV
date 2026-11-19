@@ -2,11 +2,18 @@ package com.majnioui.tv.channels;
 
 import android.app.Activity;
 import android.content.SharedPreferences;
-import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.ColorFilter;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.PixelFormat;
+import android.graphics.RectF;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -20,13 +27,12 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.SurfaceView;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.WindowManager;
-import android.widget.BaseAdapter;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ListView;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.media3.common.C;
@@ -51,52 +57,65 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Live channels from free streams the broadcasters publish (see ChannelList), like a TV's own channel
- * app: it opens on the last channel, full screen. OK opens the channel list on the left (Up/Down to
- * move, Left/Right to jump between groups, OK to watch, Back to close); without it, Up/Down and
- * CH+/CH- switch channels and Back leaves. The list is a ListView, so only the rows on screen exist,
- * however many channels there are.
+ * Live channels from free streams the broadcasters publish (see ChannelList), laid out like a streaming
+ * app's Live TV page: a hero at the top with the focused channel's name and a live preview, and below it
+ * one row of channel cards per group. Moving between cards updates the hero at once and switches the
+ * preview after a short pause; OK goes full screen. Full screen: Up/Down and CH+/CH- switch channels,
+ * OK or Back return to the cards, Back on the cards leaves.
+ *
+ * One SurfaceView serves both the preview and full screen: it punches a hole through the dark window
+ * background, so nothing in the cards layer covers the video. No blur, one player, cards are plain views
+ * (a few dozen channels at most).
  */
 public class MainActivity extends Activity {
     private static final String TAG = "Channels";
     private static final long BAR_MS = 4000;
+    private static final long PREVIEW_DELAY_MS = 700;
+    private static final int BG = 0xFF0E0E12;
     private static final String DEFAULT_UA =
             "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
-    /** Group titles in the bundled list, with their Arabic names. */
-    private static final Map<String, String> ARABIC = new HashMap<>();
 
-    static {
-        ARABIC.put("Morocco", "المغرب");
-        ARABIC.put("News", "الأخبار");
-        ARABIC.put("Entertainment", "الترفيه");
-        ARABIC.put("Documentary", "الوثائقيات");
-        ARABIC.put("Religious", "القنوات الدينية");
-    }
+    // hero preview, in dp on a 960x540 dp screen
+    private static final int PV_W = 448, PV_H = 252, PV_TOP = 28, PV_RIGHT = 48, PV_RADIUS = 14;
+    private static final int CARD_W = 168, CARD_H = 95;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newFixedThreadPool(3);
-    private final LruCache<String, Bitmap> logos = new LruCache<>(60);
+    private final LruCache<String, Bitmap> logos = new LruCache<>(80);
+    /** Logo URL to "mostly light pixels", so a white logo gets a dark card and a dark logo a light one. */
+    private final Map<String, Boolean> lightLogo = new HashMap<>();
     private Typeface font;
     private int accent;
     private SharedPreferences prefs;
 
     private List<ChannelList.Channel> channels = new ArrayList<>();
-    /** List rows: a String is a group header, an Integer the index of a channel. */
-    private final List<Object> rows = new ArrayList<>();
-    private int current = -1;
+    private final List<Card> cards = new ArrayList<>();
+    /** Cards per row, top to bottom, for D-pad moves the app makes itself. */
+    private final List<List<Card>> grid = new ArrayList<>();
+    private final List<View> rowTitles = new ArrayList<>();
+    private int current = -1;   // playing
+    private int focused = -1;   // card with focus
+    private boolean fullscreen;
 
     private FrameLayout root;
+    private LinearLayout browse;
+    private LinearLayout rowsBox;
+    private ScrollView rowsScroll;
+    private TextView heroName, heroMeta, heroCount;
     private SurfaceView surface;
+    private View mask;
+    private TextView previewLive;
     private TextView message;
     private LinearLayout bar;
     private ImageView barLogo;
     private TextView barName, barGroup;
-    private LinearLayout menu;
-    private ListView list;
-    private TextView menuStatus;
-    private final RowAdapter adapter = new RowAdapter();
     private ExoPlayer player;
+    private boolean rendered;
+    private int retries;
     private final Runnable hideBar = () -> bar.animate().alpha(0f).setDuration(400).start();
+    private final Runnable previewFocused = () -> {
+        if (!fullscreen && focused >= 0 && focused != current) play(focused);
+    };
 
     @Override
     protected void onCreate(Bundle state) {
@@ -106,14 +125,21 @@ public class MainActivity extends Activity {
         prefs = getSharedPreferences("channels", MODE_PRIVATE);
 
         root = new FrameLayout(this);
-        root.setBackgroundColor(0xFF000000);
+        root.setBackgroundColor(BG);
+        buildBrowse();
         surface = new SurfaceView(this);
-        root.addView(surface, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
-        message = text(22, 400, 0xCCFFFFFF);
+        root.addView(surface, previewParams());
+        mask = new View(this);
+        mask.setBackground(new CornerMask(BG, dp(PV_RADIUS)));
+        root.addView(mask, previewParams());
+        previewLive = livePill(12);
+        FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
+        plp.setMargins(0, dp(PV_TOP + 12), dp(PV_RIGHT + PV_W - 64), 0);
+        root.addView(previewLive, plp);
+        message = text(17, 400, 0xCCFFFFFF);
         message.setGravity(Gravity.CENTER);
-        root.addView(message, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
+        root.addView(message, previewParams());
         buildBar();
-        buildMenu();
         setContentView(root);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
@@ -131,13 +157,14 @@ public class MainActivity extends Activity {
         super.onStart();
         if (channels.isEmpty()) return;
         int last = indexOf(prefs.getString("last", ""));
+        showBrowse(last >= 0 ? last : 0);
         play(last >= 0 ? last : 0);
-        if (last < 0) openMenu();   // first time: show what there is
     }
 
     @Override
     protected void onStop() {
         super.onStop();
+        main.removeCallbacks(previewFocused);
         if (player != null) {
             player.release();
             player = null;
@@ -153,19 +180,13 @@ public class MainActivity extends Activity {
     /** New list (bundled, saved or refreshed): rebuild the rows, keep the channel that is playing. */
     private void setChannels(List<ChannelList.Channel> fresh) {
         String playingId = current >= 0 && current < channels.size() ? channels.get(current).id : null;
+        String focusedId = focused >= 0 && focused < channels.size() ? channels.get(focused).id : null;
         channels = fresh;
-        rows.clear();
-        String group = null;
-        for (int i = 0; i < channels.size(); i++) {
-            if (!channels.get(i).group.equals(group)) {
-                group = channels.get(i).group;
-                rows.add(group);
-            }
-            rows.add(i);
-        }
-        if (playingId != null) current = indexOf(playingId);
-        menuStatus.setText(channels.size() + " channels");
-        adapter.notifyDataSetChanged();
+        current = playingId == null ? -1 : indexOf(playingId);
+        focused = focusedId == null ? -1 : indexOf(focusedId);
+        buildRows();
+        heroCount.setText(channels.size() + " channel live");
+        if (!fullscreen && focused >= 0) cards.get(focused).view.requestFocus();
     }
 
     private int indexOf(String id) {
@@ -173,218 +194,229 @@ public class MainActivity extends Activity {
         return -1;
     }
 
-    // ---- channel list (side menu) ---------------------------------------------------------------
+    // ---- cards page -----------------------------------------------------------------------------
 
-    private void buildMenu() {
-        menu = new LinearLayout(this);
-        menu.setOrientation(LinearLayout.VERTICAL);
-        menu.setPadding(dp(28), dp(36), dp(20), dp(24));
-        menu.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                new int[] {0xF20B0D10, 0xE60B0D10, 0xB30B0D10}));
-        menu.setVisibility(View.GONE);
+    private void buildBrowse() {
+        browse = new LinearLayout(this);
+        browse.setOrientation(LinearLayout.VERTICAL);
 
-        TextView title = text(14, 500, 0x99FFFFFF);
-        title.setLetterSpacing(0.22f);
-        title.setText("CHANNELS");
-        menu.addView(title);
-        menuStatus = text(13, 400, 0x66FFFFFF);
-        menuStatus.setPadding(0, dp(4), 0, dp(14));
-        menu.addView(menuStatus);
+        // hero: brand line, then the focused channel's details on the left; the preview sits on the right
+        LinearLayout hero = new LinearLayout(this);
+        hero.setOrientation(LinearLayout.VERTICAL);
+        hero.setPadding(dp(48), dp(32), dp(PV_RIGHT + PV_W + 32), 0);
 
-        list = new ListView(this);
-        list.setAdapter(adapter);
-        list.setDivider(null);
-        list.setVerticalScrollBarEnabled(false);
-        list.setItemsCanFocus(false);
-        list.setDrawSelectorOnTop(false);
-        GradientDrawable sel = new GradientDrawable();
-        sel.setCornerRadius(dp(12));
-        sel.setColor(0xF5FFFFFF);
-        list.setSelector(sel);
-        list.setOnItemClickListener((parent, view, position, id) -> {
-            Object row = rows.get(position);
-            if (row instanceof Integer) {
-                play((Integer) row);
-                closeMenu();
+        LinearLayout brand = new LinearLayout(this);
+        brand.setGravity(Gravity.CENTER_VERTICAL);
+        View dot = new View(this);
+        GradientDrawable d = new GradientDrawable();
+        d.setShape(GradientDrawable.OVAL);
+        d.setColor(accent);
+        dot.setBackground(d);
+        brand.addView(dot, new LinearLayout.LayoutParams(dp(10), dp(10)));
+        TextView brandText = text(17, 700, 0xFFFFFFFF);
+        brandText.setText("Live TV");
+        brandText.setPadding(dp(10), 0, 0, 0);
+        brand.addView(brandText);
+        heroCount = text(14, 400, 0x80FFFFFF);
+        heroCount.setPadding(dp(14), 0, 0, 0);
+        brand.addView(heroCount);
+        hero.addView(brand);
+
+        heroName = text(34, 700, 0xFFFFFFFF);
+        heroName.setSingleLine(true);
+        heroName.setEllipsize(TextUtils.TruncateAt.END);
+        heroName.setPadding(0, dp(72), 0, 0);
+        hero.addView(heroName);
+
+        LinearLayout metaLine = new LinearLayout(this);
+        metaLine.setGravity(Gravity.CENTER_VERTICAL);
+        metaLine.setPadding(0, dp(12), 0, 0);
+        metaLine.addView(livePill(12));
+        heroMeta = text(15, 400, 0xA6FFFFFF);
+        heroMeta.setPadding(dp(12), 0, 0, 0);
+        metaLine.addView(heroMeta);
+        hero.addView(metaLine);
+
+        TextView hint = text(13, 400, 0x66FFFFFF);
+        hint.setText("OK  Tonton layar penuh     ◀ ▶ ▲ ▼  Pilih channel");
+        hint.setPadding(0, dp(18), 0, 0);
+        hero.addView(hint);
+
+        browse.addView(hero, new LinearLayout.LayoutParams(-1, dp(PV_TOP + PV_H + 6)));
+
+        rowsScroll = new ScrollView(this);
+        rowsScroll.setVerticalScrollBarEnabled(false);
+        rowsScroll.setSmoothScrollingEnabled(true);
+        rowsBox = new LinearLayout(this);
+        rowsBox.setOrientation(LinearLayout.VERTICAL);
+        rowsBox.setPadding(0, 0, 0, dp(120));
+        rowsScroll.addView(rowsBox, new FrameLayout.LayoutParams(-1, -2));
+        browse.addView(rowsScroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        root.addView(browse, new FrameLayout.LayoutParams(-1, -1));
+    }
+
+    /** One row per group: its title, then the group's cards side by side. */
+    private void buildRows() {
+        rowsBox.removeAllViews();
+        cards.clear();
+        grid.clear();
+        rowTitles.clear();
+        LinearLayout strip = null;
+        String group = null;
+        for (int i = 0; i < channels.size(); i++) {
+            ChannelList.Channel c = channels.get(i);
+            if (!c.group.equals(group)) {
+                group = c.group;
+                TextView title = text(17, 600, 0xFFFFFFFF);
+                title.setText(group);
+                title.setPadding(dp(48), dp(cards.isEmpty() ? 6 : 12), 0, dp(4));
+                rowsBox.addView(title);
+                rowTitles.add(title);
+                HorizontalScrollView hs = new HorizontalScrollView(this);
+                hs.setHorizontalScrollBarEnabled(false);
+                hs.setClipChildren(false);
+                hs.setClipToPadding(false);
+                hs.setSmoothScrollingEnabled(true);
+                strip = new LinearLayout(this);
+                strip.setClipChildren(false);
+                strip.setPadding(dp(48), dp(4), dp(48), dp(6));
+                hs.addView(strip, new FrameLayout.LayoutParams(-2, -2));
+                rowsBox.addView(hs, new LinearLayout.LayoutParams(-1, -2));
+                grid.add(new ArrayList<>());
             }
-        });
-        list.setOnKeyListener((v, keyCode, event) -> {
-            if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
-            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                jumpGroup(keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
-                return true;
-            }
-            return false;
-        });
-        menu.addView(list, new LinearLayout.LayoutParams(-1, 0, 1f));
-
-        TextView hint = text(12, 400, 0x59FFFFFF);
-        hint.setText("◀ ▶ groups   ·   OK watch   ·   Back close");
-        hint.setPadding(0, dp(12), 0, 0);
-        menu.addView(hint);
-
-        root.addView(menu, new FrameLayout.LayoutParams(dp(400), -1, Gravity.START));
+            Card card = new Card(i, grid.size() - 1, grid.get(grid.size() - 1).size());
+            grid.get(grid.size() - 1).add(card);
+            cards.add(card);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(CARD_W), -2);
+            lp.rightMargin = dp(18);
+            strip.addView(card.view, lp);
+        }
+        for (Card card : cards) card.bindPlaying();
     }
 
-    private boolean menuOpen() {
-        return menu.getVisibility() == View.VISIBLE;
-    }
+    /** Logo on a rounded tile with the name under it; a red ring when focused. */
+    private final class Card {
+        final int index, row, col;
+        final LinearLayout view;
+        final FrameLayout tile;
+        final GradientDrawable tileBg;
+        final ImageView logo;
+        final TextView name;
+        final TextView live;
 
-    private void openMenu() {
-        if (channels.isEmpty()) return;
-        menu.setVisibility(View.VISIBLE);
-        menu.setAlpha(0f);
-        menu.setTranslationX(-dp(40));
-        menu.animate().alpha(1f).translationX(0f).setDuration(180).start();
-        main.removeCallbacks(hideBar);
-        bar.setAlpha(0f);
-        adapter.notifyDataSetChanged();
-        list.requestFocus();
-        int row = rows.indexOf(current >= 0 ? current : 0);
-        list.setSelectionFromTop(Math.max(0, row), dp(140));
-    }
+        Card(int index, int row, int col) {
+            this.index = index;
+            this.row = row;
+            this.col = col;
+            ChannelList.Channel c = channels.get(index);
+            view = new LinearLayout(MainActivity.this);
+            view.setOrientation(LinearLayout.VERTICAL);
+            view.setFocusable(true);
+            view.setClipChildren(false);
 
-    private void closeMenu() {
-        menu.animate().alpha(0f).translationX(-dp(40)).setDuration(150)
-                .withEndAction(() -> menu.setVisibility(View.GONE)).start();
-    }
-
-    /** Selects the first channel of the next (+1) or previous (-1) group. */
-    private void jumpGroup(int dir) {
-        int pos = list.getSelectedItemPosition();
-        if (pos < 0) pos = 0;
-        int header = -1;
-        if (dir > 0) {
-            for (int i = pos + 1; i < rows.size(); i++) if (rows.get(i) instanceof String) { header = i; break; }
-        } else {
-            int own = pos;
-            while (own > 0 && !(rows.get(own) instanceof String)) own--;
-            for (int i = own - 1; i >= 0; i--) if (rows.get(i) instanceof String) { header = i; break; }
-        }
-        if (header >= 0 && header + 1 < rows.size()) list.setSelectionFromTop(header + 1, dp(60));
-    }
-
-    private final class RowAdapter extends BaseAdapter {
-        @Override
-        public int getCount() {
-            return rows.size();
-        }
-
-        @Override
-        public Object getItem(int position) {
-            return rows.get(position);
-        }
-
-        @Override
-        public long getItemId(int position) {
-            return position;
-        }
-
-        @Override
-        public int getViewTypeCount() {
-            return 2;
-        }
-
-        @Override
-        public int getItemViewType(int position) {
-            return rows.get(position) instanceof String ? 0 : 1;
-        }
-
-        @Override
-        public boolean areAllItemsEnabled() {
-            return false;
-        }
-
-        @Override
-        public boolean isEnabled(int position) {
-            return rows.get(position) instanceof Integer;
-        }
-
-        @Override
-        public View getView(int position, View convert, ViewGroup parent) {
-            Object row = rows.get(position);
-            if (row instanceof String) {
-                TextView h = convert instanceof TextView ? (TextView) convert : text(13, 500, 0x99FFFFFF);
-                String ar = ARABIC.get(row);
-                h.setText(((String) row).toUpperCase(Locale.ROOT) + (ar == null ? "" : "  ·  " + ar));
-                h.setLetterSpacing(0.12f);
-                h.setPadding(dp(12), dp(position == 0 ? 4 : 18), 0, dp(8));
-                return h;
-            }
-            RowHolder holder;
-            if (convert != null && convert.getTag() instanceof RowHolder) {
-                holder = (RowHolder) convert.getTag();
-            } else {
-                holder = new RowHolder();
-                convert = holder.build();
-            }
-            holder.bind((Integer) row);
-            return convert;
-        }
-    }
-
-    /** number · logo · name, and a dot on the channel that is playing. */
-    private final class RowHolder {
-        TextView number, name;
-        ImageView logo;
-        View playing;
-        String logoUrl;
-
-        View build() {
-            LinearLayout r = new LinearLayout(MainActivity.this);
-            r.setGravity(Gravity.CENTER_VERTICAL);
-            r.setPadding(dp(12), dp(8), dp(14), dp(8));
-            r.setMinimumHeight(dp(56));
-            ColorStateList fg = new ColorStateList(new int[][] {{android.R.attr.state_selected}, {}},
-                    new int[] {0xFF111111, 0xFFFFFFFF});
-            ColorStateList dim = new ColorStateList(new int[][] {{android.R.attr.state_selected}, {}},
-                    new int[] {0x99111111, 0x80FFFFFF});
-            number = text(14, 500, 0);
-            number.setTextColor(dim);
-            number.setGravity(Gravity.END);
-            r.addView(number, new LinearLayout.LayoutParams(dp(26), -2));
-            FrameLayout logoBox = new FrameLayout(MainActivity.this);
-            GradientDrawable bg = new GradientDrawable();
-            bg.setCornerRadius(dp(8));
-            bg.setColor(0x1FFFFFFF);
-            logoBox.setBackground(bg);
+            tile = new FrameLayout(MainActivity.this);
+            tileBg = new GradientDrawable();
+            tileBg.setCornerRadius(dp(10));
+            tileBg.setColor(0xFF24242B);
+            tile.setBackground(tileBg);
+            GradientDrawable ring = new GradientDrawable();
+            ring.setCornerRadius(dp(10));
+            ring.setStroke(dp(4), accent);
+            StateListDrawable fg = new StateListDrawable();
+            fg.addState(new int[] {android.R.attr.state_focused}, ring);
+            tile.setForeground(fg);
+            tile.setDuplicateParentStateEnabled(true);
             logo = new ImageView(MainActivity.this);
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            logoBox.addView(logo, new FrameLayout.LayoutParams(-1, -1));
-            logoBox.setPadding(dp(5), dp(4), dp(5), dp(4));
-            LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(dp(68), dp(40));
-            llp.leftMargin = dp(12);
-            llp.rightMargin = dp(14);
-            r.addView(logoBox, llp);
-            name = text(17, 500, 0);
-            name.setTextColor(fg);
+            FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(-1, -1);
+            llp.setMargins(dp(22), dp(16), dp(22), dp(16));
+            tile.addView(logo, llp);
+            live = livePill(10);
+            FrameLayout.LayoutParams lv = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
+            lv.setMargins(dp(7), dp(7), 0, 0);
+            tile.addView(live, lv);
+            view.addView(tile, new LinearLayout.LayoutParams(dp(CARD_W), dp(CARD_H)));
+
+            name = text(14, 500, 0x99FFFFFF);
             name.setSingleLine(true);
             name.setEllipsize(TextUtils.TruncateAt.END);
-            r.addView(name, new LinearLayout.LayoutParams(0, -2, 1f));
-            playing = new View(MainActivity.this);
-            GradientDrawable dot = new GradientDrawable();
-            dot.setShape(GradientDrawable.OVAL);
-            dot.setColor(accent);
-            playing.setBackground(dot);
-            r.addView(playing, new LinearLayout.LayoutParams(dp(9), dp(9)));
-            r.setTag(this);
-            return r;
+            name.setPadding(dp(2), dp(9), dp(2), 0);
+            name.setText(c.name);
+            view.addView(name);
+
+            view.setOnFocusChangeListener((v, has) -> {
+                name.setTextColor(has ? 0xFFFFFFFF : 0x99FFFFFF);
+                if (has) {
+                    onCardFocused(index);
+                    // the focused row's title sits at the top of the list
+                    View title = rowTitles.get(row);
+                    rowsScroll.post(() -> rowsScroll.smoothScrollTo(0, title.getTop()));
+                }
+            });
+            view.setOnClickListener(v -> {
+                if (index != current) play(index);
+                showFullscreen();
+            });
+
+            final String want = c.logo;
+            loadLogo(want, bmp -> {
+                logo.setImageBitmap(bmp);
+                Boolean light = lightLogo.get(want);
+                tileBg.setColor(light != null && !light ? 0xFFF1F1F4 : 0xFF24242B);
+            });
         }
 
-        void bind(int index) {
-            ChannelList.Channel c = channels.get(index);
-            number.setText(String.valueOf(index + 1));
-            name.setText(c.name);
-            playing.setVisibility(index == current ? View.VISIBLE : View.INVISIBLE);
-            if (!c.logo.equals(logoUrl)) {
-                logoUrl = c.logo;
-                logo.setImageDrawable(null);
-                final String want = c.logo;
-                loadLogo(want, bmp -> {
-                    if (want.equals(logoUrl)) logo.setImageBitmap(bmp);
-                });
-            }
+        void bindPlaying() {
+            live.setVisibility(index == current ? View.VISIBLE : View.GONE);
         }
+    }
+
+    private void onCardFocused(int index) {
+        focused = index;
+        ChannelList.Channel c = channels.get(index);
+        heroName.setText(c.name);
+        heroMeta.setText(c.group + "   ·   " + (index + 1));
+        main.removeCallbacks(previewFocused);
+        main.postDelayed(previewFocused, PREVIEW_DELAY_MS);
+    }
+
+    private void showBrowse(int focus) {
+        fullscreen = false;
+        main.removeCallbacks(hideBar);
+        bar.animate().cancel();
+        bar.setAlpha(0f);
+        browse.setVisibility(View.VISIBLE);
+        mask.setVisibility(View.VISIBLE);
+        previewLive.setVisibility(View.VISIBLE);
+        surface.setLayoutParams(previewParams());
+        message.setLayoutParams(previewParams());
+        message.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        if (focus >= 0 && focus < cards.size()) {
+            Card card = cards.get(focus);
+            card.view.requestFocus();
+            onCardFocused(focus);
+        }
+    }
+
+    private void showFullscreen() {
+        if (current < 0) return;
+        fullscreen = true;
+        main.removeCallbacks(previewFocused);
+        browse.setVisibility(View.GONE);
+        mask.setVisibility(View.GONE);
+        previewLive.setVisibility(View.GONE);
+        message.setLayoutParams(new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
+        message.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        if (player != null && player.getVideoSize().width > 0) fitSurface(player.getVideoSize());
+        else surface.setLayoutParams(new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+        showBar(channels.get(current), current);
+    }
+
+    private FrameLayout.LayoutParams previewParams() {
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(dp(PV_W), dp(PV_H), Gravity.TOP | Gravity.END);
+        lp.setMargins(0, dp(PV_TOP), dp(PV_RIGHT), 0);
+        return lp;
     }
 
     // ---- player ---------------------------------------------------------------------------------
@@ -392,38 +424,54 @@ public class MainActivity extends Activity {
     private void buildBar() {
         bar = new LinearLayout(this);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(dp(20), dp(16), dp(28), dp(16));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setCornerRadius(dp(22));
-        bg.setColor(0xCC0B0D10);
-        bar.setBackground(bg);
+        bar.setPadding(dp(48), dp(70), dp(48), dp(36));
+        bar.setBackground(new GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
+                new int[] {0xF00E0E12, 0xB30E0E12, 0x000E0E12}));
+        FrameLayout logoBox = new FrameLayout(this);
+        GradientDrawable lb = new GradientDrawable();
+        lb.setCornerRadius(dp(10));
+        lb.setColor(0xFFF1F1F4);
+        logoBox.setBackground(lb);
+        logoBox.setPadding(dp(12), dp(8), dp(12), dp(8));
         barLogo = new ImageView(this);
         barLogo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        bar.addView(barLogo, new LinearLayout.LayoutParams(dp(96), dp(54)));
+        logoBox.addView(barLogo, new FrameLayout.LayoutParams(-1, -1));
+        bar.addView(logoBox, new LinearLayout.LayoutParams(dp(112), dp(63)));
         LinearLayout texts = new LinearLayout(this);
         texts.setOrientation(LinearLayout.VERTICAL);
-        texts.setPadding(dp(18), 0, 0, 0);
-        barName = text(24, 500, 0xFFFFFFFF);
+        texts.setPadding(dp(20), 0, 0, 0);
+        LinearLayout top = new LinearLayout(this);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        top.addView(livePill(12));
+        barName = text(26, 700, 0xFFFFFFFF);
+        barName.setPadding(dp(12), 0, 0, 0);
+        top.addView(barName);
+        texts.addView(top);
         barGroup = text(15, 400, 0xA6FFFFFF);
-        texts.addView(barName);
+        barGroup.setPadding(0, dp(8), 0, 0);
         texts.addView(barGroup);
-        bar.addView(texts);
+        bar.addView(texts, new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView hint = text(13, 400, 0x80FFFFFF);
+        hint.setText("▲ ▼  Ganti channel     OK  Semua channel");
+        bar.addView(hint);
         bar.setAlpha(0f);
-        FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.START);
-        blp.setMargins(dp(48), 0, 0, dp(40));
-        root.addView(bar, blp);
+        root.addView(bar, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
     }
 
     private void play(int index) {
         if (channels.isEmpty()) return;
         index = (index % channels.size() + channels.size()) % channels.size();
+        int previous = current;
         current = index;
         final ChannelList.Channel c = channels.get(index);
         prefs.edit().putString("last", c.id).apply();
-        adapter.notifyDataSetChanged();
-        message.setText("Loading…");
+        if (previous >= 0 && previous < cards.size()) cards.get(previous).bindPlaying();
+        if (index < cards.size()) cards.get(index).bindPlaying();
+        rendered = false;
+        retries = 0;
+        message.setText("Memuat…");
         message.setVisibility(View.VISIBLE);
-        if (!menuOpen()) showBar(c, index);
+        if (fullscreen) showBar(c, index);
 
         if (player != null) player.release();
         Map<String, String> headers = new HashMap<>();
@@ -442,21 +490,36 @@ public class MainActivity extends Activity {
             @Override
             public void onPlaybackStateChanged(int state) {
                 if (state == Player.STATE_READY) message.setVisibility(View.GONE);
-                else if (state == Player.STATE_BUFFERING) {
-                    message.setText("Loading…");
+                else if (state == Player.STATE_BUFFERING && !rendered) {
+                    message.setText("Memuat…");
                     message.setVisibility(View.VISIBLE);
                 }
             }
 
             @Override
+            public void onRenderedFirstFrame() {
+                rendered = true;
+                message.setVisibility(View.GONE);
+            }
+
+            @Override
             public void onVideoSizeChanged(VideoSize size) {
-                fitSurface(size);
+                if (fullscreen) fitSurface(size);
             }
 
             @Override
             public void onPlayerError(PlaybackException e) {
                 Log.w(TAG, c.name + ": " + e.getErrorCodeName());
-                message.setText(c.name + " isn't available right now.\nUp / Down for another channel, OK for the list.");
+                // free relays answer 503 now and then: try again twice before giving up
+                if (retries < 2 && player != null) {
+                    retries++;
+                    final ExoPlayer again = player;
+                    main.postDelayed(() -> {
+                        if (player == again) again.prepare();
+                    }, 2000);
+                    return;
+                }
+                message.setText(c.name + " sedang tidak tersedia.\nCoba channel lain.");
                 message.setVisibility(View.VISIBLE);
             }
         });
@@ -507,8 +570,7 @@ public class MainActivity extends Activity {
 
     private void showBar(ChannelList.Channel c, int index) {
         barName.setText(c.name);
-        String ar = ARABIC.get(c.group);
-        barGroup.setText((index + 1) + "  ·  " + c.group + (ar == null ? "" : "  ·  " + ar));
+        barGroup.setText(c.group + "   ·   " + (index + 1) + " dari " + channels.size());
         barLogo.setImageDrawable(null);
         loadLogo(c.logo, barLogo::setImageBitmap);
         bar.animate().cancel();
@@ -517,20 +579,61 @@ public class MainActivity extends Activity {
         main.postDelayed(hideBar, BAR_MS);
     }
 
+    /**
+     * D-pad on the cards page, handled before the scroll views see it (ScrollView and
+     * HorizontalScrollView would otherwise move focus by their own geometry).
+     */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        int k = event.getKeyCode();
+        boolean arrow = k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN
+                || k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT;
+        if (fullscreen || !arrow || cards.isEmpty()) return super.dispatchKeyEvent(event);
+        if (event.getAction() == KeyEvent.ACTION_DOWN) moveFocus(k);
+        return true;
+    }
+
+    private void moveFocus(int keyCode) {
+        if (focused < 0 || focused >= cards.size()) {
+            cards.get(0).view.requestFocus();
+            return;
+        }
+        Card at = cards.get(focused);
+        if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+            // exactly one row, same column or the row's last card
+            int r = at.row + (keyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1);
+            if (r < 0 || r >= grid.size()) return;
+            List<Card> row = grid.get(r);
+            row.get(Math.min(at.col, row.size() - 1)).view.requestFocus();
+        } else {
+            // stay in the row; the ends don't wrap or fall into another row
+            List<Card> row = grid.get(at.row);
+            int c = at.col + (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
+            if (c >= 0 && c < row.size()) row.get(c).view.requestFocus();
+        }
+    }
+
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (menuOpen()) {
-            if (keyCode == KeyEvent.KEYCODE_BACK) {
-                closeMenu();
-                return true;
+        if (!fullscreen) {
+            switch (keyCode) {
+                case KeyEvent.KEYCODE_CHANNEL_UP:
+                case KeyEvent.KEYCODE_CHANNEL_DOWN: {
+                    int next = (focused < 0 ? 0 : focused) + (keyCode == KeyEvent.KEYCODE_CHANNEL_UP ? 1 : -1);
+                    next = (next % cards.size() + cards.size()) % cards.size();
+                    cards.get(next).view.requestFocus();
+                    return true;
+                }
+                default:
+                    return super.onKeyDown(keyCode, event);
             }
-            return super.onKeyDown(keyCode, event);
         }
         switch (keyCode) {
+            case KeyEvent.KEYCODE_BACK:
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_MENU:
-                openMenu();
+                showBrowse(current);
                 return true;
             case KeyEvent.KEYCODE_DPAD_UP:
             case KeyEvent.KEYCODE_CHANNEL_DOWN:
@@ -580,14 +683,16 @@ public class MainActivity extends Activity {
                 BitmapFactory.decodeFile(f.getPath(), o);
                 o.inJustDecodeBounds = false;
                 o.inSampleSize = 1;
-                while (o.outWidth / (o.inSampleSize * 2) >= 240) o.inSampleSize *= 2;
+                while (o.outWidth / (o.inSampleSize * 2) >= 320) o.inSampleSize *= 2;
                 Bitmap bmp = BitmapFactory.decodeFile(f.getPath(), o);
                 if (bmp == null) {
                     f.delete();
                     return;
                 }
+                boolean light = isLight(bmp);
                 main.post(() -> {
                     logos.put(url, bmp);
+                    lightLogo.put(url, light);
                     cb.onBitmap(bmp);
                 });
             } catch (Exception e) {
@@ -596,7 +701,38 @@ public class MainActivity extends Activity {
         });
     }
 
+    /** Average brightness of the logo's visible pixels, on a coarse grid. */
+    private static boolean isLight(Bitmap b) {
+        long sum = 0;
+        int n = 0;
+        int w = b.getWidth(), h = b.getHeight();
+        for (int y = 0; y < 24; y++) {
+            for (int x = 0; x < 24; x++) {
+                int px = b.getPixel(x * (w - 1) / 23, y * (h - 1) / 23);
+                if ((px >>> 24) < 128) continue;
+                int r = (px >> 16) & 0xFF, g = (px >> 8) & 0xFF, bl = px & 0xFF;
+                sum += (r * 299 + g * 587 + bl * 114) / 1000;
+                n++;
+            }
+        }
+        // an opaque logo (a picture with its own background) keeps the dark tile
+        if (n > 24 * 24 * 0.9) return true;
+        return n > 0 && sum / n > 170;
+    }
+
     // ---- helpers --------------------------------------------------------------------------------
+
+    private TextView livePill(float sp) {
+        TextView t = text(sp, 700, 0xFFFFFFFF);
+        t.setText("LIVE");
+        t.setLetterSpacing(0.08f);
+        t.setPadding(dp(7), dp(3), dp(7), dp(3));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(4));
+        bg.setColor(accent);
+        t.setBackground(bg);
+        return t;
+    }
 
     private TextView text(float sp, int weight, int color) {
         TextView t = new TextView(this);
@@ -609,5 +745,45 @@ public class MainActivity extends Activity {
 
     private int dp(int v) {
         return Math.round(v * getResources().getDisplayMetrics().density);
+    }
+
+    /** Paints the background colour outside a rounded rectangle: rounded corners over the video. */
+    private static final class CornerMask extends Drawable {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path path = new Path();
+        private final float radius;
+
+        CornerMask(int color, float radius) {
+            paint.setColor(color);
+            this.radius = radius;
+        }
+
+        @Override
+        protected void onBoundsChange(android.graphics.Rect b) {
+            path.reset();
+            path.setFillType(Path.FillType.INVERSE_EVEN_ODD);
+            path.addRoundRect(new RectF(b), radius, radius, Path.Direction.CW);
+        }
+
+        @Override
+        public void draw(Canvas canvas) {
+            canvas.save();
+            canvas.clipRect(getBounds());
+            canvas.drawPath(path, paint);
+            canvas.restore();
+        }
+
+        @Override
+        public void setAlpha(int alpha) {
+        }
+
+        @Override
+        public void setColorFilter(ColorFilter cf) {
+        }
+
+        @Override
+        public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
+        }
     }
 }

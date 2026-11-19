@@ -20,8 +20,8 @@ record `tools/restore.sh` uses is in `~/.cleanyourtv/recovery-<box ip>-*.json`: 
 - **Home screen:** the CleanXiaomiTV launcher (`com.majnioui.cleanxiaomitv`). Photo of the day behind it
   (changes daily), Bandung weather by the clock, next prayer with a countdown (Kemenag method), dock:
   YouTube, Netflix, Xiaomi TV+, Vidio, YouTube Music; press Down for all apps.
-- **Cards:** Channels (17 Indonesian channels, since 2026-11-19), Prayer Times, and two Weather apps
-  (CleanYourTV's and CleanXiaomiTV's). Capacity Stats was uninstalled on 2026-11-19.
+- **Cards:** Channels (23 family-friendly Indonesian channels, since 2026-11-19), Prayer Times and Weather
+  (CleanXiaomiTV's). Capacity Stats and CleanYourTV's duplicate Weather app were uninstalled on 2026-11-19.
 - **Screensaver:** Google Ambient (Google's rotating art and photos).
 - **DNS:** AdGuard Private DNS (`dns.adguard-dns.com`), blocks ads and trackers in most apps, not YouTube ads.
 - **Kept on purpose:** YouTube, YouTube Music, Netflix, Xiaomi TV+, voice assistant, Chromecast, Miracast/Mi
@@ -114,7 +114,7 @@ You can also hold OK on a tile on the TV to move it.
 
 `weather_latitude`, `weather_longitude`, `weather_place` and `prayer_method` (20 = Kemenag) in the launcher's
 `config.xml`; `latitude`, `longitude`, `place` in `/tmp/CleanXiaomiTV/modules/{weather,prayer}/src/main/res/values/config.xml`.
-Then `work/build-and-install.sh all`. The box has no GPS, so the location is fixed. The Weather apps also have a
+Then `work/build-and-install.sh all`. The box has no GPS, so the location is fixed. The Weather app also has a
 **Change city** button.
 
 ## AdGuard DNS

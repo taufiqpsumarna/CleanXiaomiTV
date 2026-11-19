@@ -2,7 +2,6 @@
 # Rebuild and reinstall everything on the Xiaomi TV Box S 3rd gen (MiTV-AFMU0), as set up on 2026-10-22:
 #   - the CleanXiaomiTV launcher as Home (from /tmp/CleanXiaomiTV, configured for Bandung and this dock)
 #   - its Weather, Prayer Times and Channels apps
-#   - the Weather add-on from CleanYourTV
 #   - the Google Ambient screensaver
 # Run it after editing the dock or the city (see work/README.md). It also reapplies AdGuard Private DNS;
 # pass PRIVATE_DNS=off to leave DNS alone. Needs ADB on (Developer options) and the prompt accepted.
@@ -36,10 +35,6 @@ if [ "$WHAT" = all ] || [ "$WHAT" = apps ]; then
   (cd "$CXT/modules" && ./gradlew --no-daemon -q assembleRelease)
   for m in weather prayer channels; do
     install_apk "$CXT/modules/$m/build/outputs/apk/release/$m-release.apk"
-  done
-  for a in weather; do
-    (cd "addons/$a" && ./gradlew --no-daemon -q assembleRelease)
-    install_apk "addons/$a/app/build/outputs/apk/release/app-release.apk"
   done
 fi
 
