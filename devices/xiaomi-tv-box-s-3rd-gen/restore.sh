@@ -1,19 +1,26 @@
 #!/usr/bin/env bash
-# Put the Xiaomi TV Box S 3rd gen back the way it was before the cleanup on 2026-10-22.
-# Re-enables every package in work/debloat.txt (the setup wizard, launcherx and the CleanYourTV launcher too),
-# gives Home back to the stock Google TV launcher, and undoes the AdGuard DNS and screensaver changes.
-# Needs ADB on: Developer options > USB debugging (and Wireless debugging), then accept the prompt on the TV.
+# Put the Xiaomi TV Box S 3rd gen back the way it was before the cleanup on 2026-10-22: every package in
+# debloat.txt enabled again, Home back to the stock Google TV launcher, AdGuard DNS and the screensaver
+# choice undone. Needs ADB on: Developer options > USB debugging (and Wireless debugging).
 #
-# Usage, from the repo root:  TV_HOST=<box ip> work/restore.sh [--remove-apps]
-#   --remove-apps  also uninstall the sideloaded launcher and add-ons (they are user apps, not system ones)
+# Usage, from anywhere:  TV_HOST=<box ip> devices/xiaomi-tv-box-s-3rd-gen/restore.sh [--remove-apps]
+#   --remove-apps  also uninstall the sideloaded launcher and apps (user apps, not system ones)
 set -euo pipefail
-cd "$(dirname "$0")/.."
+HERE="$(cd "$(dirname "$0")" && pwd)"
+cd "$HERE/../.."
 : "${TV_HOST:?set TV_HOST to the box IP, e.g. TV_HOST=<box ip> $0}"
 export TV_HOST
-T() { tools/venv/bin/python -I tools/tv.py "$@"; }
+PY=tools/venv/bin/python
+T() { "$PY" -I tools/tv.py "$@"; }
+STOCK=com.google.android.apps.tv.launcherx
 
-# Packages and Home, from the record tools/disable.sh saved in ~/.cleanyourtv/ before the first change.
-tools/restore.sh work/debloat.txt com.google.android.apps.tv.launcherx
+# The stock launcher FIRST: with it off, the setup wizard's RecoveryActivity takes Home, and a reboot in
+# that state factory-reset a MiTV-MOEU0. One package per call: chained pm commands can stop silently.
+T "pm enable $STOCK"
+grep -vE '^\s*(#|$)' "$HERE/debloat.txt" | sed -E 's/\s+#.*$//' | while read -r p; do
+  T "pm enable $p" </dev/null
+done
+T "cmd package set-home-activity --user 0 \$(cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME $STOCK | tail -n 1)"
 
 # AdGuard Private DNS off (the box had no Private DNS set before; opportunistic is Android's default).
 T "settings put global private_dns_mode opportunistic"
@@ -23,9 +30,10 @@ T "settings delete secure screensaver_components"
 
 if [ "${1:-}" = --remove-apps ]; then
   for p in com.majnioui.cleanxiaomitv com.majnioui.tv.weather com.majnioui.tv.prayer com.majnioui.tv.channels \
-           com.lionlev.tv.capacity io.github.sumyabazar1.weather com.gathin.tvhome; do
-    T "pm uninstall $p" || true
+           com.gathin.tvhome; do
+    T "pm uninstall $p" </dev/null || true
   done
 fi
+T "pm list packages -d"
 T "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tail -n 1"
 echo "Done. Reboot the box once (Settings > System > Restart)."

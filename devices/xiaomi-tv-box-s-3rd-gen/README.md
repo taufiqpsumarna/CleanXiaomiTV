@@ -1,19 +1,16 @@
 # Xiaomi TV Box S 3rd gen: what was changed and how to undo it
 
 Box: Xiaomi TV Box S 3rd gen (MiTV-AFMU0, twilight), Google TV 14, firmware UKG3.250826.001.V816.0.11.0.UZFAABX.
-Set up on 2026-10-22 with [CleanYourTV](https://github.com/Gathin23/cleanyourtv) (`/tmp/cleanyourtv`) and
-[CleanXiaomiTV](https://github.com/majnioui/CleanXiaomiTV) (`/tmp/CleanXiaomiTV`, configured copy).
+Set up on 2026-10-22 with [CleanYourTV](https://github.com/Gathin23/cleanyourtv) and
+[CleanXiaomiTV](https://github.com/majnioui/CleanXiaomiTV); everything needed to rebuild or undo it now lives
+in this repo.
 
-> **Where the scripts run:** `restore.sh` and `build-and-install.sh` use CleanYourTV's tools (its
-> `tools/restore.sh` reads the recovery record `tools/disable.sh` saved). Copy this folder into a CleanYourTV
-> clone as `work/` and run them from that clone's root; `build-and-install.sh` expects this repo at
-> `/tmp/CleanXiaomiTV` (edit `CXT=` if it lives elsewhere).
+> **Where the scripts run:** from this repo, any working directory. They use `tools/tv.py` (set up once:
+> `python3 -m venv tools/venv && tools/venv/bin/pip install -r tools/requirements.txt`) and build with the
+> JDK and SDK in `~/android-build/` (override with `JAVA_HOME` / `ANDROID_HOME`).
 
-Everything was **disabled, not uninstalled**. Backups of the original state are in `backup/`, and the
-record `tools/restore.sh` uses is in `~/.cleanyourtv/recovery-<box ip>-*.json`: keep both.
-
-> `/tmp` can be cleared when WSL restarts. Copy `/tmp/cleanyourtv`, `/tmp/CleanXiaomiTV` and
-> `~/.cleanyourtv/` somewhere permanent (e.g. your home folder) if you want to rebuild or undo later.
+Everything was **disabled, not uninstalled**. A snapshot of the box (package lists, settings, getprop)
+taken on 2026-11-19 is in `backup-20261119-1827/` at the repo root (git ignores it: it holds the serial).
 
 ## What is on the box now
 
@@ -26,17 +23,17 @@ record `tools/restore.sh` uses is in `~/.cleanyourtv/recovery-<box ip>-*.json`: 
 - **DNS:** AdGuard Private DNS (`dns.adguard-dns.com`), blocks ads and trackers in most apps, not YouTube ads.
 - **Kept on purpose:** YouTube, YouTube Music, Netflix, Xiaomi TV+, voice assistant, Chromecast, Miracast/Mi
   share, firmware updates, Play Store and Play Services, and all apps you installed yourself.
-- **Disabled:** 33 packages, listed with reasons in `work/debloat.txt` (telemetry, PatchWall/Mi Home tab and
+- **Disabled:** 33 packages, listed with reasons in `debloat.txt` here (telemetry, PatchWall/Mi Home tab and
   promos, Prime Video and other preloaded apps, the setup wizard, the stock Google TV launcher and the
   CleanYourTV launcher).
 
 ## Undo everything
 
-From `/tmp/cleanyourtv`, with ADB switched on again (see "Turning ADB back on"):
+With ADB switched on again (see "Turning ADB back on"):
 
 ```bash
-TV_HOST=<box ip> work/restore.sh                # re-enable all, stock Home, DNS and screensaver back
-TV_HOST=<box ip> work/restore.sh --remove-apps  # same, and uninstall the sideloaded launcher and add-ons
+TV_HOST=<box ip> devices/xiaomi-tv-box-s-3rd-gen/restore.sh                # re-enable all, stock Home, DNS and screensaver back
+TV_HOST=<box ip> devices/xiaomi-tv-box-s-3rd-gen/restore.sh --remove-apps  # same, and uninstall the sideloaded launcher and apps
 ```
 
 Then restart the box.
@@ -89,11 +86,11 @@ From CleanYourTV's `examples/xiaomi-mitv-afmu0` (two units on this firmware) and
 
 ## Change the dock order or the apps in it
 
-Edit the `dock_apps` list in `/tmp/CleanXiaomiTV/launcher/app/src/main/res/values/config.xml` (one package per
+Edit the `dock_apps` list in `launcher/app/src/main/res/values/config.xml` (one package per
 `<item>`, left to right; `columns` is the number of slots), then rebuild:
 
 ```bash
-cd /tmp/cleanyourtv && TV_HOST=<box ip> work/build-and-install.sh launcher
+TV_HOST=<box ip> devices/xiaomi-tv-box-s-3rd-gen/build-and-install.sh launcher
 ```
 
 Package names of installed apps: `TV_HOST=<box ip> tools/venv/bin/python tools/tv.py 'pm list packages -3'`.
@@ -104,7 +101,7 @@ You can also hold OK on a tile on the TV to move it.
 - **Home background:** the photo of the day changes by itself every day. To use your own picture instead, set
   `home_photo` to `false` in that `config.xml` and push a theme with a `wallpaper.jpg` (1920x1080, dark, under
   about 300 KB) with CleanXiaomiTV's own theme script, which targets its launcher:
-  `cd /tmp/CleanXiaomiTV && TV_HOST=<box ip> tools/theme.sh themes/aurora` (copy that folder and replace
+  `TV_HOST=<box ip> tools/theme.sh themes/aurora` (copy that folder and replace
   its `wallpaper.jpg`).
 - **Screensaver:** Settings > System > Ambient mode on the TV, or switch back to the launcher's clock
   screensaver with
@@ -113,8 +110,8 @@ You can also hold OK on a tile on the TV to move it.
 ## Change the city or prayer method
 
 `weather_latitude`, `weather_longitude`, `weather_place` and `prayer_method` (20 = Kemenag) in the launcher's
-`config.xml`; `latitude`, `longitude`, `place` in `/tmp/CleanXiaomiTV/modules/{weather,prayer}/src/main/res/values/config.xml`.
-Then `work/build-and-install.sh all`. The box has no GPS, so the location is fixed. The Weather app also has a
+`config.xml`; `latitude`, `longitude`, `place` in `modules/{weather,prayer}/src/main/res/values/config.xml`.
+Then `devices/xiaomi-tv-box-s-3rd-gen/build-and-install.sh all`. The box has no GPS, so the location is fixed. The Weather app also has a
 **Change city** button.
 
 ## AdGuard DNS

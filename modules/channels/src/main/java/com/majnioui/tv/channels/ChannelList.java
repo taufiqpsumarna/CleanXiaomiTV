@@ -34,6 +34,15 @@ final class ChannelList {
     static final class Channel {
         final String id, name, group;
         String logo, url, userAgent, referrer;
+        /**
+         * The bundled link when the daily refresh swapped in another one, tried when the refreshed link
+         * fails to play; null when both are the same. Never written to the saved list: rebuilt on load.
+         */
+        String backupUrl, backupUserAgent, backupReferrer;
+
+        boolean hasBackup() {
+            return backupUrl != null && !backupUrl.isEmpty() && !backupUrl.equals(url);
+        }
 
         Channel(String id, String name, String group, String logo, String url, String userAgent, String referrer) {
             this.id = id;
@@ -59,12 +68,28 @@ final class ChannelList {
             if (saved.isFile() && saved.lastModified() < installedAt(ctx)) saved.delete();
             if (saved.isFile()) {
                 List<Channel> list = parse(new String(readAll(new FileInputStream(saved)), StandardCharsets.UTF_8));
-                if (!list.isEmpty()) return list;
+                if (!list.isEmpty()) {
+                    attachBackups(list, bundled(ctx));
+                    return list;
+                }
             }
         } catch (Exception e) {
             Log.w(TAG, "saved list: " + e);
         }
         return bundled(ctx);
+    }
+
+    /** Gives every channel whose link differs from the bundled one that bundled link as its backup. */
+    static void attachBackups(List<Channel> list, List<Channel> bundled) {
+        Map<String, Channel> byId = new HashMap<>();
+        for (Channel b : bundled) byId.put(b.id, b);
+        for (Channel c : list) {
+            Channel b = byId.get(c.id);
+            if (b == null || b.url.isEmpty() || b.url.equals(c.url)) continue;
+            c.backupUrl = b.url;
+            c.backupUserAgent = b.userAgent;
+            c.backupReferrer = b.referrer;
+        }
     }
 
     private static long installedAt(Context ctx) {
@@ -116,6 +141,8 @@ final class ChannelList {
             c.referrer = f.referrer;
             if (!f.logo.isEmpty()) c.logo = f.logo;
         }
+        // an unchecked new link never replaces a working one outright: the bundled link stays as backup
+        attachBackups(list, bundled(ctx));
         try (FileOutputStream out = new FileOutputStream(new File(ctx.getFilesDir(), SAVED))) {
             out.write(write(list).getBytes(StandardCharsets.UTF_8));
         } catch (Exception e) {

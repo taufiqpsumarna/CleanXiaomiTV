@@ -112,6 +112,8 @@ public class MainActivity extends Activity {
     private ExoPlayer player;
     private boolean rendered;
     private int retries;
+    /** Channels that failed on every link this session; their cards are dimmed and say Offline. */
+    private final java.util.Set<String> offline = new java.util.HashSet<>();
     private final Runnable hideBar = () -> bar.animate().alpha(0f).setDuration(400).start();
     private final Runnable previewFocused = () -> {
         if (!fullscreen && focused >= 0 && focused != current) play(focused);
@@ -304,6 +306,7 @@ public class MainActivity extends Activity {
         final ImageView logo;
         final TextView name;
         final TextView live;
+        final TextView off;
 
         Card(int index, int row, int col) {
             this.index = index;
@@ -336,6 +339,17 @@ public class MainActivity extends Activity {
             FrameLayout.LayoutParams lv = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
             lv.setMargins(dp(7), dp(7), 0, 0);
             tile.addView(live, lv);
+            off = text(10, 600, 0xFFFFFFFF);
+            off.setText("OFFLINE");
+            off.setLetterSpacing(0.08f);
+            off.setPadding(dp(7), dp(3), dp(7), dp(3));
+            GradientDrawable ob = new GradientDrawable();
+            ob.setCornerRadius(dp(4));
+            ob.setColor(0xCC3A3A42);
+            off.setBackground(ob);
+            FrameLayout.LayoutParams ol = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);
+            ol.setMargins(0, 0, dp(7), dp(7));
+            tile.addView(off, ol);
             view.addView(tile, new LinearLayout.LayoutParams(dp(CARD_W), dp(CARD_H)));
 
             name = text(14, 500, 0x99FFFFFF);
@@ -368,7 +382,10 @@ public class MainActivity extends Activity {
         }
 
         void bindPlaying() {
-            live.setVisibility(index == current ? View.VISIBLE : View.GONE);
+            boolean down = offline.contains(channels.get(index).id);
+            live.setVisibility(index == current && !down ? View.VISIBLE : View.GONE);
+            off.setVisibility(down ? View.VISIBLE : View.GONE);
+            logo.setAlpha(down ? 0.35f : 1f);
         }
     }
 
@@ -383,6 +400,7 @@ public class MainActivity extends Activity {
 
     private void showBrowse(int focus) {
         fullscreen = false;
+        if (player != null) player.setVolume(0f);
         main.removeCallbacks(hideBar);
         bar.animate().cancel();
         bar.setAlpha(0f);
@@ -402,6 +420,7 @@ public class MainActivity extends Activity {
     private void showFullscreen() {
         if (current < 0) return;
         fullscreen = true;
+        if (player != null) player.setVolume(1f);
         main.removeCallbacks(previewFocused);
         browse.setVisibility(View.GONE);
         mask.setVisibility(View.GONE);
@@ -467,17 +486,24 @@ public class MainActivity extends Activity {
         prefs.edit().putString("last", c.id).apply();
         if (previous >= 0 && previous < cards.size()) cards.get(previous).bindPlaying();
         if (index < cards.size()) cards.get(index).bindPlaying();
-        rendered = false;
-        retries = 0;
         message.setText("Memuat…");
         message.setVisibility(View.VISIBLE);
         if (fullscreen) showBar(c, index);
+        playLink(c, index, false);
+    }
 
+    /** Plays the channel's link, or its backup (the bundled link) once the refreshed one has failed. */
+    private void playLink(ChannelList.Channel c, int index, boolean backup) {
+        rendered = false;
+        retries = 0;
+        final String url = backup ? c.backupUrl : c.url;
+        final String ua = backup ? c.backupUserAgent : c.userAgent;
+        final String ref = backup ? c.backupReferrer : c.referrer;
         if (player != null) player.release();
         Map<String, String> headers = new HashMap<>();
-        if (c.referrer != null) headers.put("Referer", c.referrer);
+        if (ref != null) headers.put("Referer", ref);
         DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
-                .setUserAgent(c.userAgent != null ? c.userAgent : DEFAULT_UA)
+                .setUserAgent(ua != null ? ua : DEFAULT_UA)
                 .setAllowCrossProtocolRedirects(true)
                 .setConnectTimeoutMs(10000)
                 .setReadTimeoutMs(15000)
@@ -486,6 +512,8 @@ public class MainActivity extends Activity {
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(this).setDataSourceFactory(http))
                 .build();
         player.setVideoSurfaceView(surface);
+        // the preview on the cards page is silent; sound comes on with full screen
+        player.setVolume(fullscreen ? 1f : 0f);
         player.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int state) {
@@ -500,6 +528,7 @@ public class MainActivity extends Activity {
             public void onRenderedFirstFrame() {
                 rendered = true;
                 message.setVisibility(View.GONE);
+                if (offline.remove(c.id) && index < cards.size()) cards.get(index).bindPlaying();
             }
 
             @Override
@@ -519,27 +548,34 @@ public class MainActivity extends Activity {
                     }, 2000);
                     return;
                 }
+                if (!backup && c.hasBackup()) {
+                    Log.w(TAG, c.name + ": trying the bundled link");
+                    playLink(c, index, true);
+                    return;
+                }
+                offline.add(c.id);
+                if (index < cards.size()) cards.get(index).bindPlaying();
                 message.setText(c.name + " sedang tidak tersedia.\nCoba channel lain.");
                 message.setVisibility(View.VISIBLE);
             }
         });
         final ExoPlayer p = player;
         // Links without .m3u8 or .mpd: look at the first bytes to tell DASH from HLS.
-        String lower = c.url.toLowerCase(Locale.ROOT);
+        String lower = url.toLowerCase(Locale.ROOT);
         if (lower.contains(".m3u8") || lower.contains(".mpd")) {
-            start(p, c.url, null);
+            start(p, url, null);
         } else {
             io.execute(() -> {
                 String mime = MimeTypes.APPLICATION_M3U8;
                 try {
                     // DASH manifests are XML; HLS playlists start with #EXTM3U.
-                    String head = new String(ChannelList.fetch(c.url), StandardCharsets.UTF_8).trim();
+                    String head = new String(ChannelList.fetch(url), StandardCharsets.UTF_8).trim();
                     if (head.startsWith("<")) mime = MimeTypes.APPLICATION_MPD;
                 } catch (Exception ignored) {
                 }
                 final String m = mime;
                 main.post(() -> {
-                    if (player == p) start(p, c.url, m);
+                    if (player == p) start(p, url, m);
                 });
             });
         }

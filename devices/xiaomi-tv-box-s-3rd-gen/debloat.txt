@@ -1,8 +1,9 @@
 # Xiaomi TV Box S 3rd gen (MiTV-AFMU0, twilight), Google TV 14 (SDK 34), firmware UKG3.250826.001.V816.0.11.0.UZFAABX
 # Based on examples/xiaomi-mitv-afmu0. Kept by owner's choice: YouTube, YouTube Music, Netflix, Xiaomi TV+
 # (com.mitv.tvhome.mitvplus), voice assistant, Chromecast, Miracast/Mi share, firmware updates.
-# Apply:   TV_HOST=<box ip> tools/disable.sh work/debloat.txt
-# Undo:    TV_HOST=<box ip> tools/restore.sh work/debloat.txt com.google.android.apps.tv.launcherx
+# Apply:   TV_HOST=<box ip> tools/disable.sh devices/xiaomi-tv-box-s-3rd-gen/debloat.txt
+#          (setupwraith before launcherx, and check its Wi-Fi first: see README.md "Notes from this box")
+# Undo:    TV_HOST=<box ip> devices/xiaomi-tv-box-s-3rd-gen/restore.sh  (launcherx first, then this list)
 
 # Batch 1: telemetry, feedback, ad personalisation
 com.miui.tv.analytics
