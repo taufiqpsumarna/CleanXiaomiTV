@@ -27,7 +27,7 @@
 - **Now playing**: while Spotify or another music app plays, a slim glass pill under the top buttons with the cover, song, artist and previous / play-pause / next, tinted in the cover's colour. Hold OK on it to open the app.
 - **Screensaver**: photos of the day with a slow zoom, the time, weather and today's prayer times top left, the song playing bottom left, and a thikr with its source bottom right, a new one every minute.
 - **Your choice**: prayer times on Home, prayer times on the screensaver and athkar can each be switched On or Off from the Settings button, no rebuild needed.
-- **Apps** in [`modules/`](modules/): **Weather** (7-day forecast, city search), **Prayer Times** (Morocco method, countdown to the next prayer) and **Channels** (23 family-friendly live Indonesian channels in a Live TV page: a preview at the top, one row of channel cards per category; free streams the broadcasters publish). They show up on the home screen as cards.
+- **Apps** in [`modules/`](modules/): **Weather** (7-day forecast, city search), **Prayer Times** (Morocco method, countdown to the next prayer) and **Channels** (22 family-friendly live Indonesian channels in a Live TV page: a preview at the top, one row of channel cards per category; free streams the broadcasters publish). They show up on the home screen as cards.
 
 ## Install
 
