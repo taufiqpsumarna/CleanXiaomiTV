@@ -15,7 +15,7 @@ com.android.ondevicepersonalization.services
 com.android.federatedcompute.services
 
 # Batch 2: PatchWall / Mi Home tab, content rows, promos, auto-installs (Xiaomi TV+ kept)
-com.mitv.tvhome.atv
+# com.mitv.tvhome.atv                  # PatchWall: kept by owner's choice (2026-11-19)
 com.mitv.tvhome.michannel
 com.mitv.tvhome.oemtab
 com.xm.webcontent

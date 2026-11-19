@@ -112,7 +112,7 @@ final class ChannelList {
         return list;
     }
 
-    /** M3U with #EXTINF attributes (tvg-id, tvg-logo, group-title) and optional #EXTVLCOPT headers. */
+    /** M3U with #EXTINF attributes (tvg-id, tvg-logo, group-title, http-user-agent, http-referrer) and optional #EXTVLCOPT headers. */
     static List<Channel> parse(String text) {
         List<Channel> out = new ArrayList<>();
         String[] lines = text.split("\r?\n");
@@ -126,7 +126,8 @@ final class ChannelList {
             Map<String, String> attrs = new LinkedHashMap<>();
             Matcher m = ATTR.matcher(l.substring(0, comma));
             while (m.find()) attrs.put(m.group(1), m.group(2));
-            String ua = null, ref = null, url = "";
+            // iptv-org also puts the headers on the #EXTINF line itself
+            String ua = attrs.get("http-user-agent"), ref = attrs.get("http-referrer"), url = "";
             for (int j = i + 1; j < lines.length && j < i + 8; j++) {
                 String x = lines[j].trim();
                 if (x.startsWith("#EXTVLCOPT:http-user-agent=")) ua = x.substring(27);
