@@ -20,7 +20,7 @@ record `tools/restore.sh` uses is in `~/.cleanyourtv/recovery-<box ip>-*.json`: 
 - **Home screen:** the CleanXiaomiTV launcher (`com.majnioui.cleanxiaomitv`). Photo of the day behind it
   (changes daily), Bandung weather by the clock, next prayer with a countdown (Kemenag method), dock:
   YouTube, Netflix, Xiaomi TV+, Vidio, YouTube Music; press Down for all apps.
-- **Cards:** Channels (22 family-friendly Indonesian channels, since 2026-11-19), Prayer Times and Weather
+- **Cards:** Channels (27 family-friendly Indonesian channels, since 2026-11-19), Prayer Times and Weather
   (CleanXiaomiTV's). Capacity Stats and CleanYourTV's duplicate Weather app were uninstalled on 2026-11-19.
 - **Screensaver:** Google Ambient (Google's rotating art and photos).
 - **DNS:** AdGuard Private DNS (`dns.adguard-dns.com`), blocks ads and trackers in most apps, not YouTube ads.
